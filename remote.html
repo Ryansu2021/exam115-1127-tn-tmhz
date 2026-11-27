@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1c2130"><title>手機遙控｜會考分析研習</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#12151f;color:#eef0f6;font-family:"Noto Sans TC","PingFang TC",system-ui,sans-serif;overscroll-behavior:none}
+body{display:flex;flex-direction:column;gap:10px;padding:max(10px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));user-select:none;-webkit-user-select:none}
+.hd{display:flex;align-items:center;gap:8px;font-size:13px;color:#aab0c2}.dot{width:10px;height:10px;border-radius:50%;background:#e2a23b;flex:none}.dot.ok{background:#22c55e}.hd .rm{margin-left:auto;font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.1em}
+.pg{background:#1c2130;border-radius:14px;padding:10px 14px}.pg .u{font-size:12px;color:#9aa3b8}.pg .t{font-size:17px;font-weight:800;line-height:1.35;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pg .n{font:700 13px ui-monospace,Menlo,monospace;color:#cfd5e4;margin-top:4px}
+select{width:100%;font-weight:600;font-size:15px;font-family:inherit;padding:9px 10px;border-radius:10px;border:1px solid #333a4d;background:#1c2130;color:#eef0f6}
+.seg{display:flex;background:#1c2130;border-radius:12px;padding:4px;gap:4px}.seg button{flex:1}
+button{font-weight:800;font-size:15px;font-family:inherit;color:#eef0f6;background:#262c3d;border:0;border-radius:10px;padding:10px 6px;cursor:pointer;touch-action:manipulation}
+button:active{filter:brightness(1.3)}button.on{background:#fbbf24;color:#1c2130}button:disabled{opacity:.35}
+.row{display:flex;gap:8px}.row>*{flex:1}
+#pad{position:relative;width:100%;border-radius:14px;background:#0b0d14 linear-gradient(#ffffff0d 1px,transparent 1px) 0 0/100% 25%,linear-gradient(90deg,#ffffff0d 1px,transparent 1px) 0 0/12.5% 100%;border:1px solid #333a4d;touch-action:none;flex:none}
+#pad .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#6b7387;font-size:14px;pointer-events:none;padding:0 20px}
+#pad i{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#ff2a2a;box-shadow:0 0 14px 4px #ff2a2a88;display:none;pointer-events:none}
+#pad.pick{border-color:#2563eb;box-shadow:0 0 0 2px #2563eb inset}
+.nav{display:flex;gap:10px;margin-top:auto}.nav button{flex:1;font-size:22px;padding:18px 0;border-radius:16px}.nav .nx{flex:1.6;background:#0f766e}
+#join{display:none;flex-direction:column;gap:12px;margin-top:20vh;text-align:center}#join input{font:800 28px ui-monospace,Menlo,monospace;text-align:center;letter-spacing:.2em;padding:12px;border-radius:12px;border:1px solid #333a4d;background:#1c2130;color:#fff;text-transform:lowercase}
+body.nojoin>*:not(#join){display:none!important}body.nojoin #join{display:flex}
+</style></head><body>
+<div class="hd"><span class="dot" id="dot"></span><span id="st">連線中…</span><span class="rm" id="rm"></span></div>
+<div class="pg"><div class="u" id="pu">　</div><div class="t" id="pt">等講師電腦連線…</div><div class="n" id="pn"></div></div>
+<select id="toc" aria-label="跳到某一頁"><option value="">跳到…</option></select>
+<div class="seg" id="seg"><button data-m="">👆 點選</button><button data-m="spot">🔦 聚光燈</button><button data-m="laser">🔴 雷射筆</button></div>
+<div class="row"><button id="szm">聚光燈 －</button><button id="szp">聚光燈 ＋</button></div>
+<div id="pad"><div class="hint" id="hint">滑動＝移動電腦上的游標，輕點＝按一下</div><i id="pdot"></i></div>
+<div class="row"><button id="bz">🔍 點選放大</button><button id="kz" disabled>▶ 看結論</button></div>
+<div class="nav"><button id="pv" aria-label="上一頁">◀</button><button id="nx" class="nx" aria-label="下一頁">下一頁 ▶</button></div>
+<div id="join"><div style="font-size:18px;font-weight:800">輸入講師電腦上的房間代號</div><input id="code" maxlength="6" inputmode="text" autocomplete="off" autocapitalize="off"><button id="go" style="background:#0f766e">連線</button></div>
+<script>
+/* 精簡 MQTT 3.1.1（WebSocket）客戶端：只做 CONNECT／SUBSCRIBE／PUBLISH QoS0（含 retain）／PING。
+   講師版與手機遙控頁共用（修正_20261126_手機遙控.py 會把這段原樣嵌進去）。
+   MQB(urls, clientId, onMsg, onState) 會同時連所有中繼站：任一站連上就能用；送出時每一站都送。 */
+function MQB(urls, cid, onMsg, onState){
+  const te=new TextEncoder(), td=new TextDecoder();
+  const enc=s=>{ const b=te.encode(s); return [b.length>>8, b.length&255, ...b]; };
+  const len=n=>{ const o=[]; do{ let d=n%128; n=Math.floor(n/128); if(n>0) d|=128; o.push(d); }while(n>0); return o; };
+  const pkt=(h,body)=>new Uint8Array([h,...len(body.length),...body]);
+  const subs=new Set(), conns=[];
+  let pid=1, closed=false;
+  function one(url){
+    const c={url, ws:null, ok:false, buf:new Uint8Array(0), ping:0, retry:0};
+    const send=u=>{ try{ if(c.ws&&c.ws.readyState===1) c.ws.send(u); }catch(e){} };
+    c.sub=t=>{ if(!c.ok) return; const id=pid++&65535||1; send(pkt(0x82,[id>>8,id&255,...enc(t),0])); };
+    c.pub=(t,m,r)=>{ if(!c.ok) return; send(pkt(0x30|(r?1:0),[...enc(t),...te.encode(m)])); };
+    function parse(){
+      for(;;){ const b=c.buf; if(b.length<2) return; let m=1,v=0,i=1,d;
+        do{ if(i>=b.length) return; d=b[i++]; v+=(d&127)*m; m*=128; }while(d&128);
+        if(b.length<i+v) return; const typ=b[0]>>4, body=b.subarray(i,i+v); c.buf=b.slice(i+v);
+        if(typ===2){ if(body[1]===0){ c.ok=true; subs.forEach(t=>c.sub(t)); onState&&onState(); } }
+        else if(typ===3){ const qos=(b[0]>>1)&3, tl=(body[0]<<8)|body[1]; const t=td.decode(body.subarray(2,2+tl)); const p=td.decode(body.subarray(2+tl+(qos?2:0))); onMsg&&onMsg(t,p); }
+      } }
+    function open(){
+      if(closed) return; c.ok=false; c.buf=new Uint8Array(0);
+      let ws; try{ ws=new WebSocket(url,'mqtt'); }catch(e){ later(); return; }
+      c.ws=ws; ws.binaryType='arraybuffer';
+      ws.onopen=()=>{ send(pkt(0x10,[...enc('MQTT'),4,2,0,60,...enc(cid+'-'+Math.random().toString(36).slice(2,7))])); clearInterval(c.ping); c.ping=setInterval(()=>send(new Uint8Array([0xC0,0])),25000); };
+      ws.onmessage=e=>{ const a=new Uint8Array(e.data), n=new Uint8Array(c.buf.length+a.length); n.set(c.buf); n.set(a,c.buf.length); c.buf=n; parse(); };
+      ws.onclose=()=>{ const was=c.ok; c.ok=false; clearInterval(c.ping); if(was) onState&&onState(); later(); };
+      ws.onerror=()=>{ try{ ws.close(); }catch(e){} };
+    }
+    function later(){ if(closed) return; clearTimeout(c.retry); c.retry=setTimeout(open,3000); }
+    c.close=()=>{ clearInterval(c.ping); clearTimeout(c.retry); try{ c.ws&&c.ws.close(); }catch(e){} c.ok=false; };
+    open(); return c;
+  }
+  urls.forEach(u=>conns.push(one(u)));
+  return {
+    sub(t){ subs.add(t); conns.forEach(c=>c.sub(t)); },
+    pub(t,m,r){ conns.forEach(c=>c.pub(t,m,r)); },
+    ok(){ return conns.filter(c=>c.ok).length; },
+    names(){ return conns.filter(c=>c.ok).map(c=>c.url.replace(/^wss:\/\/|[:\/].*$/g,'')); },
+    close(){ closed=true; conns.forEach(c=>c.close()); }
+  };
+}
+const MQ_URLS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+
+const $=s=>document.getElementById(s);
+let room=(location.hash.match(/r=([a-z0-9]{6})/)||[])[1]||'';
+if(!room){ document.body.classList.add('nojoin'); $('go').onclick=()=>{ const v=$('code').value.trim().toLowerCase(); if(/^[a-z0-9]{6}$/.test(v)){ location.hash='r='+v; location.reload(); } }; }
+else{
+  $('rm').textContent=room;
+  const T=s=>'tnexamrc/'+room+'/'+s; let S={}, seq=0, pick=false, gotState=0;
+  const uid=Math.random().toString(36).slice(2,8);
+  const mq=MQB(MQ_URLS,'phone',(t,p)=>{
+    if(t===T('state')){ if(!p){ S={}; gotState=0; } else { try{ S=JSON.parse(p); gotState=Date.now(); }catch(e){} } ui(); }
+    else if(t===T('toc')){ let L=[]; try{ L=JSON.parse(p)||[]; }catch(e){} $('toc').innerHTML='<option value="">跳到…</option>'+L.map(x=>`<option value="${x[0]}">${x[0]+1}．${String(x[1]).replace(/[<&]/g,'')}</option>`).join(''); }
+  },()=>{ if(mq.ok()){ mq.sub(T('state')); mq.sub(T('toc')); send({a:'hi'}); } ui(); });
+  function send(o){ o.k=uid+(++seq); mq.pub(T('cmd'),JSON.stringify(o)); if(navigator.vibrate&&o.a!=='pt') navigator.vibrate(8); }
+  function ui(){ const ok=mq.ok()>0, live=gotState>0;
+    $('dot').className='dot'+(ok&&live?' ok':''); $('st').textContent=!ok?'連線中…（請確認手機有網路）':(live?'已連上講師電腦':'已連上中繼站，等講師電腦…');
+    $('pu').textContent=S.u||'　'; $('pt').textContent=live?(S.t||''):'等講師電腦連線…'; $('pn').textContent=live&&S.n?`第 ${S.i+1} / ${S.n} 頁`:'';
+    document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',(S.spot||'')===b.dataset.m));
+    $('bz').textContent=S.zoom?'↩ 回原頁':(pick?'點觸控板上的位置…':'🔍 點選放大'); $('bz').classList.toggle('on',pick||!!S.zoom); $('pad').classList.toggle('pick',pick);
+    $('hint').textContent=pick?'點一下要放大的位置（對照投影畫面）':(S.spot?'手指位置＝投影上的'+(S.spot==='spot'?'聚光燈':'雷射筆')+'位置':'👆 滑動＝移動電腦上的游標，輕點＝按一下');
+    $('kz').disabled=!S.kz; const a=S.a||1.6; fitPad(a); }
+  function fitPad(a){ const p=$('pad'), w=p.clientWidth||document.body.clientWidth-24; const free=innerHeight*.36; p.style.height=Math.min(w/a,free)+'px'; }
+  addEventListener('resize',()=>fitPad(S.a||1.6));
+  $('nx').onclick=()=>send({a:'next'}); $('pv').onclick=()=>send({a:'prev'});
+  $('toc').onchange=e=>{ if(e.target.value!=='') send({a:'go',i:+e.target.value}); e.target.value=''; };
+  document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>send({a:'spot',m:b.dataset.m}));
+  $('szp').onclick=()=>send({a:'size',f:2}); $('szm').onclick=()=>send({a:'size',f:.5});
+  $('bz').onclick=()=>{ if(S.zoom){ pick=false; send({a:'unzoom'}); } else { pick=!pick; } ui(); };
+  $('kz').onclick=()=>send({a:'kz'});
+  /* 觸控板：觸控板的長寬比＝講師電腦上書頁的長寬比，手指位置直接對應到頁面位置 */
+  const pad=$('pad'), dot=$('pdot'); let lastT=0, down=false;
+  const pos=e=>{ const r=pad.getBoundingClientRect(); return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)), Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]; };
+  const showDot=(x,y)=>{ dot.style.display='block'; dot.style.left=(x*100)+'%'; dot.style.top=(y*100)+'%'; };
+  /* 👆 點選模式（指標關）：像筆電觸控板，送位移 mv；沒移動的輕點送 tap。聚光燈／雷射筆：手指位置＝頁面位置（pt） */
+  let rel=false, lx=0, ly=0, ax=0, ay=0, moved=0, t0=0;
+  const flush=()=>{ if(ax||ay){ send({a:'mv',dx:+ax.toFixed(4),dy:+ay.toFixed(4)}); ax=ay=0; } };
+  pad.addEventListener('pointerdown',e=>{ pad.setPointerCapture(e.pointerId); down=true; const [x,y]=pos(e); showDot(x,y);
+    if(pick){ pick=false; send({a:'zoom',x,y}); ui(); down=false; return; }
+    rel=!S.spot; lx=e.clientX; ly=e.clientY; moved=0; t0=Date.now(); ax=ay=0;
+    if(!rel){ send({a:'pt',x,y}); lastT=Date.now(); } });
+  pad.addEventListener('pointermove',e=>{ if(!down) return; const [x,y]=pos(e); showDot(x,y); const n=Date.now();
+    if(rel){ const w=pad.getBoundingClientRect().width||300; ax+=(e.clientX-lx)/w; ay+=(e.clientY-ly)/w; moved+=Math.abs(e.clientX-lx)+Math.abs(e.clientY-ly); lx=e.clientX; ly=e.clientY;
+      if(n-lastT>35){ lastT=n; flush(); } return; }
+    if(n-lastT>40){ lastT=n; send({a:'pt',x,y}); } });
+  const up=()=>{ if(down&&rel){ flush(); if(moved<10 && Date.now()-t0<400) send({a:'tap'}); } down=false; setTimeout(()=>{ if(!down) dot.style.display='none'; },1200); };
+  pad.addEventListener('pointerup',up); pad.addEventListener('pointercancel',up);
+  /* 螢幕不休眠 */
+  let wl=null; const lock=async()=>{ try{ if('wakeLock' in navigator && !wl){ wl=await navigator.wakeLock.request('screen'); wl.addEventListener('release',()=>wl=null); } }catch(e){} };
+  document.addEventListener('pointerdown',lock); document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ lock(); send({a:'hi'}); } });
+  setInterval(()=>{ if(gotState && Date.now()-gotState>60000){} ui(); },3000);
+  ui();
+}
+</script></body></html>
