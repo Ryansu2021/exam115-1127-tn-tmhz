@@ -27,7 +27,7 @@ body.nojoin>*:not(#join){display:none!important}body.nojoin #join{display:flex}
 <div class="seg" id="seg"><button data-m="">👆 點選</button><button data-m="spot">🔦 聚光燈</button><button data-m="laser">🔴 雷射筆</button></div>
 <div class="row"><button id="szm">聚光燈 －</button><button id="szp">聚光燈 ＋</button></div>
 <div id="pad"><div class="hint" id="hint">滑動＝移動電腦上的游標，輕點＝按一下</div><i id="pdot"></i></div>
-<div class="row"><button id="bz">🔍 點選放大</button><button id="kz" disabled>▶ 看結論</button></div>
+<div class="row"><button id="bz">🔍 點選放大</button><button id="kz" disabled>▶ 看結論</button><button id="dk">🧰 工具列</button></div><!--RCDOCK-->
 <div class="nav"><button id="pv" aria-label="上一頁">◀</button><button id="nx" class="nx" aria-label="下一頁">下一頁 ▶</button></div>
 <div id="join"><div style="font-size:18px;font-weight:800">輸入講師電腦上的房間代號</div><input id="code" maxlength="6" inputmode="text" autocomplete="off" autocapitalize="off"><button id="go" style="background:#0f766e">連線</button></div>
 <script>
@@ -95,7 +95,7 @@ else{
     document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',(S.spot||'')===b.dataset.m));
     $('bz').textContent=S.zoom?'↩ 回原頁':(pick?'點觸控板上的位置…':'🔍 點選放大'); $('bz').classList.toggle('on',pick||!!S.zoom); $('pad').classList.toggle('pick',pick);
     $('hint').textContent=pick?'點一下要放大的位置（對照投影畫面）':(S.spot?'手指位置＝投影上的'+(S.spot==='spot'?'聚光燈':'雷射筆')+'位置':'👆 滑動＝移動電腦上的游標，輕點＝按一下');
-    $('kz').disabled=!S.kz; const a=S.a||1.6; fitPad(a); }
+    $('kz').disabled=!S.kz; $('dk').classList.toggle('on',!!S.dock); $('dk').textContent=S.dock?'🧰 收起工具列':'🧰 工具列'; const a=S.a||1.6; fitPad(a); }
   function fitPad(a){ const p=$('pad'), w=p.clientWidth||document.body.clientWidth-24; const free=innerHeight*.36; p.style.height=Math.min(w/a,free)+'px'; }
   addEventListener('resize',()=>fitPad(S.a||1.6));
   $('nx').onclick=()=>send({a:'next'}); $('pv').onclick=()=>send({a:'prev'});
@@ -103,7 +103,7 @@ else{
   document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>send({a:'spot',m:b.dataset.m}));
   $('szp').onclick=()=>send({a:'size',f:2}); $('szm').onclick=()=>send({a:'size',f:.5});
   $('bz').onclick=()=>{ if(S.zoom){ pick=false; send({a:'unzoom'}); } else { pick=!pick; } ui(); };
-  $('kz').onclick=()=>send({a:'kz'});
+  $('kz').onclick=()=>send({a:'kz'}); $('dk').onclick=()=>send({a:'dock'});
   /* 觸控板：觸控板的長寬比＝講師電腦上書頁的長寬比，手指位置直接對應到頁面位置 */
   const pad=$('pad'), dot=$('pdot'); let lastT=0, down=false;
   const pos=e=>{ const r=pad.getBoundingClientRect(); return [Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)), Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]; };
